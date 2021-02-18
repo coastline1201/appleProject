@@ -1,0 +1,17 @@
+{% extends 'base.html' %}
+
+{% block header %}
+  <h1>{% block title %}Upload Files{% endblock %}</h1>
+{% endblock %}
+
+{% block content %}
+  <form method=post enctype=multipart/form-data>
+      <p>Please upload order csv file here</p>
+      <input type=file name=order_file>
+      <p>Please upload supply csv file here</p>
+      <input type=file name=supply_file>
+      <p>Please upload sourcing csv file here</p>
+      <input type=file name=sourcing_file>
+      <input type=submit value=Upload>
+  </form>
+{% endblock %}

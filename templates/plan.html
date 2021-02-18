@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+
+{% block header %}
+  <h1>{% block title %}Your result{% endblock %}</h1>
+{% endblock %}
+
+{% block content %}
+  <h2>Here is your allocation</h2>
+  <div><a href="{{ url_for('download') }}">Click here</a> to download a report</div>
+{% endblock %}
