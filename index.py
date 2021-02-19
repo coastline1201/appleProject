@@ -64,6 +64,7 @@ def allocate():
 	# sort order by date, then by customer and product alphabetically	
 	orders = sorted(orders, key=lambda row: '-'.join([row[2], row[1], row[0]]))
 	# read sourcing file
+	# customer,product->[sites]
 	sourcing_map = dict()
 	with open('uploads/sourcing_file.csv', newline='') as f:
 		reader = csv.reader(f)
@@ -75,6 +76,7 @@ def allocate():
 			sourcing_value.append(row[0]) # site
 			sourcing_map[sourcing_key] = sourcing_value
 	# read supply file
+	# site,product->{date->quantity}
 	supply_map = dict()
 	with open('uploads/supply_file.csv', newline='') as f:
 		reader = csv.reader(f)
@@ -85,9 +87,10 @@ def allocate():
 			if (quantity <= 0):
 				continue
 			supply_key = tuple(row[0:2]) # site,product
-			supply_value = supply_map.get(supply_key, [])
+			supply_value = supply_map.get(supply_key, {})
 			supply_date = convertDate(row[2], '%d/%m/%y')
-			supply_value.append((supply_date, quantity, row[0])) # date,quantity,site
+			supply_quantity = supply_value.get(supply_date, 0)
+			supply_value[supply_date] = supply_quantity + quantity
 			supply_map[supply_key] = supply_value
 	# allocate
 	results = []
@@ -106,30 +109,35 @@ def allocate():
 			supplies = supply_map.get((site, product))
 			if supplies is None:
 				continue
-			all_supplies.extend(supplies)
+			for date, quantity in supplies.items():
+				all_supplies.append((date, quantity, site))
 		if len(all_supplies) == 0:
 			continue
 		# sort by date, then site alphabetically
 		all_supplies = sorted(all_supplies, key=lambda supply: '-'.join([supply[0], supply[2]]))
 		fullfilments = {}
 		for i in range(len(all_supplies)):
-			supply = all_supplies[i][1]
+			(date, supply, site) = all_supplies[i]
 			if supply == 0:
 				continue
 			fullfillment = min(demand, supply)
 			demand = demand - fullfillment
 			supply = supply - fullfillment
-			site = all_supplies[i][2]
 			site_fullfilments = fullfilments.get(site, [])
-			site_fullfilments.append((all_supplies[i][0], fullfillment))
+			site_fullfilments.append((date, fullfillment))
 			fullfilments[site] = site_fullfilments
-			unique_dates.add(all_supplies[i][0])
+			if supply == 0:
+				del supply_map[(site, product)][date]
+				if len(supply_map[(site, product)]) == 0:
+					del supply_map[(site, product)]
+			else:
+				supply_map[(site, product)][date] = supply
+			unique_dates.add(date)
 			if (demand == 0):
 				break
 		results.append((customer, product, fullfilments))
 
 	# write to result csv 
-	# write header
 	sorted_dates = sorted(list(unique_dates))
 	with open('uploads/order_execution_plan.csv', 'w', newline='') as csvfile:
 		writer = csv.writer(csvfile)
@@ -144,18 +152,6 @@ def allocate():
 					idx = header.index(fullfillment[0])
 					row[idx] = fullfillment[1]
 				writer.writerow(row)
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def convertDate(date_str, pattern):
