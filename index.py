@@ -52,46 +52,9 @@ def download():
 	return send_from_directory('uploads/', 'order_execution_plan.csv', as_attachment=True)
 
 def allocate():
-	# read orders file
-	orders = []
-	with open('uploads/order_file.csv', newline='') as f:
-		reader = csv.reader(f)
-		# header row is not used
-		next(reader)
-		for row in reader:
-			row[2] = convertDate(row[2], '%d-%b-%y')
-			orders.append(row)
-	# sort order by date, then by customer and product alphabetically	
-	orders = sorted(orders, key=lambda row: '-'.join([row[2], row[1], row[0]]))
-	# read sourcing file
-	# customer,product->[sites]
-	sourcing_map = dict()
-	with open('uploads/sourcing_file.csv', newline='') as f:
-		reader = csv.reader(f)
-		# header row is not used
-		next(reader)
-		for row in reader:
-			sourcing_key = tuple(row[1:]) # customer,product
-			sourcing_value = sourcing_map.get(sourcing_key, [])
-			sourcing_value.append(row[0]) # site
-			sourcing_map[sourcing_key] = sourcing_value
-	# read supply file
-	# site,product->{date->quantity}
-	supply_map = dict()
-	with open('uploads/supply_file.csv', newline='') as f:
-		reader = csv.reader(f)
-		# header row is not used
-		next(reader)
-		for row in reader:
-			quantity = int(row[3])
-			if (quantity <= 0):
-				continue
-			supply_key = tuple(row[0:2]) # site,product
-			supply_value = supply_map.get(supply_key, {})
-			supply_date = convertDate(row[2], '%d/%m/%y')
-			supply_quantity = supply_value.get(supply_date, 0)
-			supply_value[supply_date] = supply_quantity + quantity
-			supply_map[supply_key] = supply_value
+	orders = readOrderFile()
+	sourcing_map = readSourcingFile()
+	supply_map = readSupplyFile()
 	# allocate
 	results = []
 	unique_dates = set()
@@ -153,6 +116,50 @@ def allocate():
 					row[idx] = fullfillment[1]
 				writer.writerow(row)
 
+def readOrderFile():
+	orders = []
+	with open('uploads/order_file.csv', newline='') as f:
+		reader = csv.reader(f)
+		# header row is not used
+		next(reader)
+		for row in reader:
+			row[2] = convertDate(row[2], '%d-%b-%y')
+			orders.append(row)
+	# sort order by date, then by customer and product alphabetically	
+	return sorted(orders, key=lambda row: '-'.join([row[2], row[1], row[0]]))
+
+def readSourcingFile():
+	# customer,product->[sites]
+	sourcing_map = dict()
+	with open('uploads/sourcing_file.csv', newline='') as f:
+		reader = csv.reader(f)
+		# header row is not used
+		next(reader)
+		for row in reader:
+			sourcing_key = tuple(row[1:]) # customer,product
+			sourcing_value = sourcing_map.get(sourcing_key, [])
+			sourcing_value.append(row[0]) # site
+			sourcing_map[sourcing_key] = sourcing_value
+	return sourcing_map
+
+def readSupplyFile():
+	# site,product->{date->quantity}
+	supply_map = dict()
+	with open('uploads/supply_file.csv', newline='') as f:
+		reader = csv.reader(f)
+		# header row is not used
+		next(reader)
+		for row in reader:
+			quantity = int(row[3])
+			if (quantity <= 0):
+				continue
+			supply_key = tuple(row[0:2]) # site,product
+			supply_value = supply_map.get(supply_key, {})
+			supply_date = convertDate(row[2], '%d/%m/%y')
+			supply_quantity = supply_value.get(supply_date, 0)
+			supply_value[supply_date] = supply_quantity + quantity
+			supply_map[supply_key] = supply_value
+	return supply_map
 
 def convertDate(date_str, pattern):
 	dt = datetime.strptime(date_str, pattern)
