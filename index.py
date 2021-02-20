@@ -1,6 +1,7 @@
 from datetime import datetime
 from flask import Flask
 from flask import flash, redirect, render_template, request, send_from_directory, url_for
+import copy
 import csv
 import time
 
@@ -58,47 +59,57 @@ def allocate():
 	# allocate
 	results = []
 	unique_dates = set()
-	for order in orders:
-		customer = order[0]
-		product = order[1]
-		demand = int(order[3])
-		if demand <= 0:
-			continue
-		sites = sourcing_map.get((customer, product))
-		if sites is None:
-			continue
-		all_supplies = []
-		for site in sites:
-			supplies = supply_map.get((site, product))
-			if supplies is None:
+	for orders_on_same_day in orders:
+		# pre-process orders
+		# calculate all claims to supply for site, product combinations on same day
+		total_demand = {} # site,product->total demand from all orders can source from this site
+		order_set = {} # site,product->{date->order index}
+		all_supply_keys = [[] for _i in range(len(orders_on_same_day))] # list of [site,product combinations]
+		for idx, (customer, product, demand) in enumerate(orders_on_same_day):
+			sites = sourcing_map.get((customer, product), [])
+			for site in sites:
+				supplies = supply_map.get((site, product))
+				if supplies is not None:
+					for date in supplies.keys():
+						order_set.setdefault((site, product), {})
+						order_set[(site, product)].setdefault(date, set())
+						order_set[(site, product)][date].add(idx)
+					total_demand.setdefault((site, product), 0)
+					total_demand[(site, product)] += demand
+					all_supply_keys[idx].append((site, product))
+		tmp_supply_map = copy.deepcopy(supply_map)
+		for idx, (customer, product, demand) in enumerate(orders_on_same_day):
+			if len(all_supply_keys[idx]) == 0:
 				continue
-			for date, quantity in supplies.items():
-				all_supplies.append((date, quantity, site))
-		if len(all_supplies) == 0:
-			continue
-		# sort by date, then site alphabetically
-		all_supplies = sorted(all_supplies, key=lambda supply: '-'.join([supply[0], supply[2]]))
-		fullfilments = {}
-		for i in range(len(all_supplies)):
-			(date, supply, site) = all_supplies[i]
-			if supply == 0:
-				continue
-			fullfillment = min(demand, supply)
-			demand = demand - fullfillment
-			supply = supply - fullfillment
-			site_fullfilments = fullfilments.get(site, [])
-			site_fullfilments.append((date, fullfillment))
-			fullfilments[site] = site_fullfilments
-			if supply == 0:
-				del supply_map[(site, product)][date]
-				if len(supply_map[(site, product)]) == 0:
-					del supply_map[(site, product)]
-			else:
-				supply_map[(site, product)][date] = supply
-			unique_dates.add(date)
-			if (demand == 0):
-				break
-		results.append((customer, product, fullfilments))
+			order_supplies = []
+			for (site, product) in all_supply_keys[idx]:
+				supplies = tmp_supply_map[(site, product)]
+				for date, quantity in supplies.items():
+					order_supplies.append((date, quantity, site))
+			# sort by date, then site alphabetically
+			order_supplies = sorted(order_supplies, key=lambda supply: '-'.join([supply[0], supply[2]]))
+			fullfilments = {}
+			origin_demand = demand
+			for (date, supply, site) in order_supplies:
+				# if it is the last order claims this supply, cap should be all that was left
+				# to avoid leaving 1 because of supply is undivisible between orders
+				if demand > 0:
+					if len(order_set[(site, product)][date]) == 1:
+						cap = supply_map[(site, product)][date]
+					else:
+						cap = origin_demand * supply // total_demand[(site, product)]
+					fullfillment = min(demand, cap)
+					demand -= fullfillment
+					fullfilments.setdefault(site, [])
+					fullfilments[site].append((date, fullfillment))
+					supply_map[(site, product)][date] -= fullfillment
+					if supply_map[(site, product)][date] == 0:
+						del supply_map[(site, product)][date]
+						if len(supply_map[(site, product)]) == 0:
+							del supply_map[(site, product)]
+					unique_dates.add(date)
+				order_set[(site, product)][date].discard(idx)				
+			results.append((customer, product, fullfilments))
 
 	# write to result csv 
 	sorted_dates = sorted(list(unique_dates))
@@ -115,18 +126,26 @@ def allocate():
 					idx = header.index(fullfillment[0])
 					row[idx] = fullfillment[1]
 				writer.writerow(row)
+	
+
 
 def readOrderFile():
-	orders = []
+	orders = {}
 	with open('uploads/order_file.csv', newline='') as f:
 		reader = csv.reader(f)
 		# header row is not used
 		next(reader)
 		for row in reader:
-			row[2] = convertDate(row[2], '%d-%b-%y')
-			orders.append(row)
+			demand = int(row[3])
+			if demand <= 0:
+				continue
+			order_date = convertDate(row[2], '%d-%b-%y')
+			orders.setdefault(order_date, [])
+			orders[order_date].append((row[0], row[1], demand)) # customer, product, quantity
 	# sort order by date, then by customer and product alphabetically	
-	return sorted(orders, key=lambda row: '-'.join([row[2], row[1], row[0]]))
+	keys = list(orders.keys())
+	keys.sort()
+	return [sorted(orders[key], key=lambda row: '-'.join([row[1], row[0]])) for key in keys]
 
 def readSourcingFile():
 	# customer,product->[sites]
@@ -137,9 +156,8 @@ def readSourcingFile():
 		next(reader)
 		for row in reader:
 			sourcing_key = tuple(row[1:]) # customer,product
-			sourcing_value = sourcing_map.get(sourcing_key, [])
-			sourcing_value.append(row[0]) # site
-			sourcing_map[sourcing_key] = sourcing_value
+			sourcing_map.setdefault(sourcing_key, [])
+			sourcing_map[sourcing_key].append(row[0]) # site
 	return sourcing_map
 
 def readSupplyFile():
@@ -151,14 +169,13 @@ def readSupplyFile():
 		next(reader)
 		for row in reader:
 			quantity = int(row[3])
-			if (quantity <= 0):
+			if quantity <= 0:
 				continue
 			supply_key = tuple(row[0:2]) # site,product
-			supply_value = supply_map.get(supply_key, {})
+			supply_map.setdefault(supply_key, {})
 			supply_date = convertDate(row[2], '%d/%m/%y')
-			supply_quantity = supply_value.get(supply_date, 0)
-			supply_value[supply_date] = supply_quantity + quantity
-			supply_map[supply_key] = supply_value
+			supply_map[supply_key].setdefault(supply_date, 0)
+			supply_map[supply_key][supply_date] += quantity
 	return supply_map
 
 def convertDate(date_str, pattern):
