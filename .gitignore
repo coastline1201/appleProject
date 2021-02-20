@@ -126,3 +126,6 @@ dmypy.json
 
 # upload files
 /uploads/
+
+# misc 
+.DS_Store
