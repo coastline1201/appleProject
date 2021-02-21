@@ -57,59 +57,55 @@ def allocate():
 	sourcing_map = readSourcingFile()
 	supply_map = readSupplyFile()
 	# allocate
-	results = []
+	results = {}
 	unique_dates = set()
-	for orders_on_same_day in orders:
+	for batch, orders_on_same_day in enumerate(orders):
 		# pre-process orders
-		# calculate all claims to supply for site, product combinations on same day
-		total_demand = {} # site,product->total demand from all orders can source from this site
-		order_set = {} # site,product->{date->order index}
-		all_supply_keys = [[] for _i in range(len(orders_on_same_day))] # list of [site,product combinations]
+		order_indexes = {} # site,product->[order index->demand]
+		demands = [] # a deep copy of demand for each order
+		all_supplies = {} # date->{site,product->quantity}
 		for idx, (customer, product, demand) in enumerate(orders_on_same_day):
-			sites = sourcing_map.get((customer, product), [])
-			for site in sites:
+			demands.append(demand)
+			for site in sourcing_map.get((customer, product), []):
 				supplies = supply_map.get((site, product))
 				if supplies is not None:
-					for date in supplies.keys():
-						order_set.setdefault((site, product), {})
-						order_set[(site, product)].setdefault(date, set())
-						order_set[(site, product)][date].add(idx)
-					total_demand.setdefault((site, product), 0)
-					total_demand[(site, product)] += demand
-					all_supply_keys[idx].append((site, product))
-		tmp_supply_map = copy.deepcopy(supply_map)
-		for idx, (customer, product, demand) in enumerate(orders_on_same_day):
-			if len(all_supply_keys[idx]) == 0:
-				continue
-			order_supplies = []
-			for (site, product) in all_supply_keys[idx]:
-				supplies = tmp_supply_map[(site, product)]
-				for date, quantity in supplies.items():
-					order_supplies.append((date, quantity, site))
-			# sort by date, then site alphabetically
-			order_supplies = sorted(order_supplies, key=lambda supply: '-'.join([supply[0], supply[2]]))
-			fullfilments = {}
-			origin_demand = demand
-			for (date, supply, site) in order_supplies:
-				# if it is the last order claims this supply, cap should be all that was left
-				# to avoid leaving 1 because of supply is undivisible between orders
-				if demand > 0:
-					if len(order_set[(site, product)][date]) == 1:
+					for date, quantity in supplies.items():
+						all_supplies.setdefault(date, {})
+						all_supplies[date][(site,product)] = quantity
+					order_indexes.setdefault((site, product), [])
+					order_indexes[(site, product)].append(idx)
+		supply_dates = list(all_supplies.keys())
+		for date in sorted(supply_dates):
+			# sort by product, then site alphabetically
+			sorted_keys = sorted(all_supplies[date].keys(), key = lambda sorting_key: '_'.join([sorting_key[1], sorting_key[0]]))
+			for (site, product) in sorted_keys:
+				supply = all_supplies[date][(site, product)]
+				claiming_orders = [idx for idx in order_indexes[(site, product)] if demands[idx] > 0]
+				if len(claiming_orders) == 0:
+					continue
+				unique_dates.add(date)
+				total_demand = sum([orders_on_same_day[idx][2] for idx in claiming_orders])
+				cnt = 0;
+				for idx in claiming_orders:
+					cnt += 1
+					# if it is the last order claims this supply, cap should be all that was left
+					# to avoid leaving 1 because of supply is undivisible between orders
+					if cnt == len(claiming_orders):
 						cap = supply_map[(site, product)][date]
 					else:
-						cap = origin_demand * supply // total_demand[(site, product)]
-					fullfillment = min(demand, cap)
-					demand -= fullfillment
-					fullfilments.setdefault(site, [])
-					fullfilments[site].append((date, fullfillment))
-					supply_map[(site, product)][date] -= fullfillment
+						cap = orders_on_same_day[idx][2] * supply // total_demand
+					fullfilment = min(demands[idx], cap)
+					demands[idx] -= fullfilment
+					customer = orders_on_same_day[idx][0]
+					results.setdefault((batch, idx, site, customer, product), [])
+					results[(batch, idx, site, customer, product)].append((date, fullfilment))
+					supply_map[(site, product)][date] -= fullfilment
+					#print((batch, idx, customer, product, orders_on_same_day[idx][2], demands[(site, product)][idx], supply, supply_map[(site, product)][date], total_demand, cap, ))
 					if supply_map[(site, product)][date] == 0:
 						del supply_map[(site, product)][date]
 						if len(supply_map[(site, product)]) == 0:
 							del supply_map[(site, product)]
-					unique_dates.add(date)
-				order_set[(site, product)][date].discard(idx)				
-			results.append((customer, product, fullfilments))
+
 
 	# write to result csv 
 	sorted_dates = sorted(list(unique_dates))
@@ -118,15 +114,13 @@ def allocate():
 		header = ['site', 'customer', 'product']
 		header.extend(sorted_dates)
 		writer.writerow(header)
-		for result in results:
-			for site, site_fullfilments in result[2].items():
-				row = [site, result[0], result[1],]
-				row.extend(['' for _i in range(len(sorted_dates))])
-				for fullfillment in site_fullfilments:
-					idx = header.index(fullfillment[0])
-					row[idx] = fullfillment[1]
-				writer.writerow(row)
-	
+		for (_batch, _idx, site, customer, product), fullfilments in results.items():
+			row = [site, customer, product]
+			row.extend(['' for _i in range(len(sorted_dates))])
+			for (date, fullfilment) in fullfilments:
+				idx = header.index(date)
+				row[idx] = fullfilment
+			writer.writerow(row)
 
 
 def readOrderFile():
@@ -145,7 +139,7 @@ def readOrderFile():
 	# sort order by date, then by customer and product alphabetically	
 	keys = list(orders.keys())
 	keys.sort()
-	return [sorted(orders[key], key=lambda row: '-'.join([row[1], row[0]])) for key in keys]
+	return [sorted(orders[key], key=lambda row: '-'.join([row[0], row[1]])) for key in keys]
 
 def readSourcingFile():
 	# customer,product->[sites]
