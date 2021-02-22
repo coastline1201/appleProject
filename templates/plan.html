@@ -1,7 +1,7 @@
 {% extends 'base.html' %}
 
 {% block header %}
-  <h1>Allocation Plan</h1>
+  <h2>Allocation Plan</h2>
 {% endblock %}
 
 {% block content %}
@@ -23,6 +23,6 @@
 	{% endfor %}
 	</tbody>
   </table>
-  <div><a href="{{ url_for('download', filename = 'order_execution_plan') }}">Click here</a> to download a csv file.</div>
-   <a href="{{ url_for('index') }}"><button>Back to upload files</button></a>
+  <div class="download"><a href="{{ url_for('download', filename = 'order_execution_plan') }}">Click here</a> to download a csv file.</div>
+  <a href="{{ url_for('index') }}"><button>Back to upload files</button></a>
 {% endblock %}

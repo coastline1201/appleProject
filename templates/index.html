@@ -29,14 +29,14 @@
 {% endblock %}
 
 {% block header %}
-  <h1>Upload Files</h1>
+  <h2>Upload Files</h2>
 {% endblock %}
 
 {% block content %}
   <form id="form" method=post enctype=multipart/form-data>
-    <div>{{ render_file('Demand Order', file_name='order_file') }}</div>
-    <div>{{ render_file('Supply', file_name='supply_file') }}</div>
-    <div>{{ render_file('Sourcing Rule', file_name='sourcing_file') }}</div>
+    {{ render_file('Demand Order', file_name='order_file') }}
+    {{ render_file('Supply', file_name='supply_file') }}
+    {{ render_file('Sourcing Rule', file_name='sourcing_file') }}
   </form>
   <input form="form" id='upload' type=submit value=Upload>
   <a id='proceed' href="{{ url_for('plan') }}"><button>Proceed to plan orders</button></a>
