@@ -3,37 +3,43 @@ from flask import Flask
 from flask import flash, redirect, render_template, request, send_from_directory, url_for
 import copy
 import csv
+import os
 import time
 
 ALLOWED_EXTENSIONS = {'csv'}
+FILE_NAMES = ['order_file', 'supply_file', 'sourcing_file']
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '123456'
 
 @app.route('/', methods=['GET', 'POST'])
 def index():
+	has_file = {}
+	for file_name in FILE_NAMES:
+		has_file[file_name] = os.path.isfile('uploads/' + file_name + '.csv')
+
 	if request.method == 'POST':
 		# check if the post request has the file part
-		file_names = ['order_file', 'supply_file', 'sourcing_file']
 		has_error = False
-		for file_name in file_names:
-			has_error = check_file(file_name, request.files) or has_error
+		for file_name in FILE_NAMES:
+			has_error = check_file(file_name, request.files, has_file) or has_error
 		if has_error:
 			return redirect(url_for('index'))
 		return redirect(url_for('plan'))
 
-	return render_template('index.html')
+	
+	return render_template('index.html', has_file = has_file)
 
-def check_file(file_name, files):
-	if file_name not in request.files:
-		flash(file_name + ' is not uploaded')
-		return True
+def check_file(file_name, files, has_file):
+	print(file_name)
+	print(has_file[file_name])
+	if file_name not in request.files or files[file_name].filename == '' or files[file_name] is None:
+		if not has_file[file_name]:
+			flash(file_name + ' is not uploaded')
+			return True
+		else:
+			return False
 	file = files[file_name]
-	# if user does not select file, browser also
-	# submit an empty part without filename
-	if file.filename == '' or file is None:
-		flash(file_name + ' is not uploaded')
-		return True
 	if not allowed_file(file.filename):
 		flash('The format for file ' + file.filename + ' is not supported')
 		return True
@@ -45,18 +51,18 @@ def allowed_file(filename):
 
 @app.route('/plan')
 def plan():
-	allocate()
-	return render_template('plan.html')
-
-@app.route('/download', methods=['GET'])
-def download():
-	return send_from_directory('uploads/', 'order_execution_plan.csv', as_attachment=True)
-
-def allocate():
 	orders = readOrderFile()
 	sourcing_map = readSourcingFile()
 	supply_map = readSupplyFile()
-	# allocate
+	plan = allocate(orders, sourcing_map, supply_map)
+	writePlanFile(plan)
+	return render_template('plan.html', plan = plan)
+
+@app.route('/download/<path:filename>', methods=['GET'])
+def download(filename):
+	return send_from_directory('uploads/', filename + '.csv', as_attachment=True)
+
+def allocate(orders, sourcing_map, supply_map):
 	results = {}
 	unique_dates = set()
 	for batch, orders_on_same_day in enumerate(orders):
@@ -105,23 +111,30 @@ def allocate():
 						del supply_map[(site, product)][date]
 						if len(supply_map[(site, product)]) == 0:
 							del supply_map[(site, product)]
-
-
-	# write to result csv 
+	# pivot result to readable format
+	plan = []
 	sorted_dates = sorted(list(unique_dates))
+	header = ['site', 'customer', 'product']
+	header.extend(sorted_dates)
+	plan.append(header)
+	# sort result by processing date, then site alphabetically
+	sorted_keys = sorted(list(results.keys()), key = lambda sorting_key: '_'.join([str(sorting_key[0]), str(sorting_key[1]), sorting_key[2]]))
+	for key in sorted_keys:
+		(_batch, _idx, site, customer, product) = key
+		fullfilments = results[key]
+		row = [site, customer, product]
+		row.extend(['' for _i in range(len(sorted_dates))])
+		for (date, fullfilment) in fullfilments:
+			idx = header.index(date)
+			row[idx] = fullfilment
+		plan.append(row)
+	return plan
+
+def writePlanFile(plan):
 	with open('uploads/order_execution_plan.csv', 'w', newline='') as csvfile:
 		writer = csv.writer(csvfile)
-		header = ['site', 'customer', 'product']
-		header.extend(sorted_dates)
-		writer.writerow(header)
-		for (_batch, _idx, site, customer, product), fullfilments in results.items():
-			row = [site, customer, product]
-			row.extend(['' for _i in range(len(sorted_dates))])
-			for (date, fullfilment) in fullfilments:
-				idx = header.index(date)
-				row[idx] = fullfilment
+		for row in plan:
 			writer.writerow(row)
-
 
 def readOrderFile():
 	orders = {}

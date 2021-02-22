@@ -1,10 +1,28 @@
 {% extends 'base.html' %}
 
 {% block header %}
-  <h1>{% block title %}Your result{% endblock %}</h1>
+  <h1>Allocation Plan</h1>
 {% endblock %}
 
 {% block content %}
-  <h2>Here is your allocation</h2>
-  <div><a href="{{ url_for('download') }}">Click here</a> to download a report</div>
+  <table border="1">
+	<thead>
+		<tr>
+		{% for col in plan[0] %}
+			<th>{{ col }}</th>
+		{% endfor %}
+		</tr>
+	</thead>
+	<tbody>
+	{% for row in plan[1:] %}
+		<tr>
+		{% for col in row %}
+			<td>{{ col }}</td>
+		{% endfor %}		
+		</tr>
+	{% endfor %}
+	</tbody>
+  </table>
+  <div><a href="{{ url_for('download', filename = 'order_execution_plan') }}">Click here</a> to download a csv file.</div>
+   <a href="{{ url_for('index') }}"><button>Back to upload files</button></a>
 {% endblock %}

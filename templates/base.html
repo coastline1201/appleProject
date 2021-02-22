@@ -1,16 +1,23 @@
-
 <!doctype html>
-<title>{% block title %}{% endblock %} - </title>
-<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-<nav>
-  <h1><a href="{{ url_for('index') }}">Apple Order Planner</a></h1>
-</nav>
-<section class="content">
-  <header>
-    {% block header %}{% endblock %}
-  </header>
-  {% for message in get_flashed_messages() %}
-    <div class="flash">{{ message }}</div>
-  {% endfor %}
-  {% block content %}{% endblock %}
-</section>
+<html lang="en">
+<head>
+    {% block head %}
+    <title>Apple Order Planner</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    {% endblock %}
+</head>
+<body>
+    <nav>
+	  <h1><a href="{{ url_for('index') }}">Apple Order Planner</a></h1>
+	</nav>
+	<section class="content">
+	  <header>
+	    {% block header %}{% endblock %}
+	  </header>
+	  {% for message in get_flashed_messages() %}
+	    <div class="flash">{{ message }}</div>
+	  {% endfor %}
+	  {% block content %}{% endblock %}
+	</section>
+</body>
+</html>

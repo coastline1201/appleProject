@@ -1,17 +1,55 @@
 {% extends 'base.html' %}
 
+{% block head %}
+    {{ super() }}
+    <script type="text/javascript">
+      window.onload=function(){
+        var has_file = JSON.parse('{{ has_file|tojson }}');
+        if (has_file.order_file && has_file.supply_file && has_file.sourcing_file) {
+          document.getElementById('upload').style.display = 'none';
+        } else {
+          document.getElementById('proceed').style.display = 'none';          
+        }
+        for (var file_name in has_file) {
+          if (has_file[file_name]) {
+            document.getElementById('upload_' + file_name).style.display = 'none';
+          } else {
+            document.getElementById('view_' + file_name).style.display = 'none';            
+          }
+        }
+        
+      }
+      function replaceFile(file_name) {
+        document.getElementById('view_' + file_name).style.display = 'none';
+        document.getElementById('upload_' + file_name).style.display = 'block';
+        document.getElementById('proceed').style.display = 'none';
+        document.getElementById('upload').style.display = 'block';
+      }
+    </script>
+{% endblock %}
+
 {% block header %}
-  <h1>{% block title %}Upload Files{% endblock %}</h1>
+  <h1>Upload Files</h1>
 {% endblock %}
 
 {% block content %}
-  <form method=post enctype=multipart/form-data>
-      <p>Please upload order csv file here</p>
-      <input type=file name=order_file>
-      <p>Please upload supply csv file here</p>
-      <input type=file name=supply_file>
-      <p>Please upload sourcing csv file here</p>
-      <input type=file name=sourcing_file>
-      <input type=submit value=Upload>
+  <form id="form" method=post enctype=multipart/form-data>
+    <div>{{ render_file('Demand Order', file_name='order_file') }}</div>
+    <div>{{ render_file('Supply', file_name='supply_file') }}</div>
+    <div>{{ render_file('Sourcing Rule', file_name='sourcing_file') }}</div>
   </form>
+  <input form="form" id='upload' type=submit value=Upload>
+  <a id='proceed' href="{{ url_for('plan') }}"><button>Proceed to plan orders</button></a>
 {% endblock %}
+
+{% macro render_file(title, file_name) -%}
+  <div id="{{ 'view_' + file_name }}">
+    <p>You've already uploaded {{title}} file</p>
+    <button type="button" onclick="replaceFile( '{{ file_name }}' )">replace</button>
+    <a href="{{ url_for('download', filename = file_name)}}"><button type="button">view</button></a>
+  </div>
+  <div id="{{ 'upload_' + file_name }}">
+    <p>Please upload {{title}} file here</p>
+    <input type=file name="{{ file_name }}">
+  </div>
+{%- endmacro %}
