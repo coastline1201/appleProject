@@ -7,7 +7,11 @@ import os
 import time
 
 ALLOWED_EXTENSIONS = {'csv'}
-FILE_NAMES = ['order_file', 'supply_file', 'sourcing_file']
+FILE_HEADERS = {
+	'order_file':['customer', 'product', 'date', 'quantity'],
+	'supply_file':['site', 'product', 'date', 'quantity'],
+	'sourcing_file':['site', 'customer', 'product'],
+}
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '123456'
@@ -15,13 +19,13 @@ app.config['SECRET_KEY'] = '123456'
 @app.route('/', methods=['GET', 'POST'])
 def index():
 	has_file = {}
-	for file_name in FILE_NAMES:
+	for file_name in FILE_HEADERS.keys():
 		has_file[file_name] = os.path.isfile('uploads/' + file_name + '.csv')
 
 	if request.method == 'POST':
 		# check if the post request has the file part
 		has_error = False
-		for file_name in FILE_NAMES:
+		for file_name in FILE_HEADERS.keys():
 			has_error = check_file(file_name, request.files, has_file) or has_error
 		if has_error:
 			return redirect(url_for('index'))
@@ -54,6 +58,9 @@ def plan():
 	orders = readOrderFile()
 	sourcing_map = readSourcingFile()
 	supply_map = readSupplyFile()
+	if orders is None or sourcing_map is None or supply_map is None:
+		return redirect(url_for('index'))
+
 	plan = allocate(orders, sourcing_map, supply_map)
 	writePlanFile(plan)
 	return render_template('plan.html', plan = plan)
@@ -138,17 +145,42 @@ def writePlanFile(plan):
 
 def readOrderFile():
 	orders = {}
+	indexes = {}
+	has_error = False
 	with open('uploads/order_file.csv', newline='') as f:
 		reader = csv.reader(f)
-		# header row is not used
-		next(reader)
+		header_row = next(reader)
+		length = len(header_row)
+		for header in FILE_HEADERS['order_file']:
+			for idx, col in enumerate(header_row):
+				if col.lower() == header:
+					indexes[header] = idx
+			if header not in indexes:
+				flash('Demand order file: missing %s column' % header)
+				return None
+		line_num = 1 
 		for row in reader:
-			demand = int(row[3])
+			line_num += 1
+			if len(row) != length:
+				flash('Demand order file, line %d: too many or too few columns' % line_num)
+				has_error = True
+				continue
+			demand = parseQuantity(row[indexes['quantity']])
+			if demand is None:
+				flash('Demand order file, line %d: cannot parse quantity' % line_num)
+				has_error = True
+				demand = 0
+			order_date = convertDate(row[indexes['date']])
+			if order_date is None:
+				flash('Demand order file, line %d: cannot parse date' %line_num)
+				has_error = True
+				order_date = ''
 			if demand <= 0:
 				continue
-			order_date = convertDate(row[2], '%d-%b-%y')
-			orders.setdefault(order_date, [])
-			orders[order_date].append((row[0], row[1], demand)) # customer, product, quantity
+			order_list = orders.setdefault(order_date, [])
+			order_list.append((row[indexes['customer']], row[indexes['product']], demand))
+	if has_error:
+		return None
 	# sort order by date, then by customer and product alphabetically	
 	keys = list(orders.keys())
 	keys.sort()
@@ -156,44 +188,97 @@ def readOrderFile():
 
 def readSourcingFile():
 	# customer,product->[sites]
-	sourcing_map = dict()
+	sourcing_map = {}
+	indexes = {}
+	has_error = False
 	with open('uploads/sourcing_file.csv', newline='') as f:
 		reader = csv.reader(f)
-		# header row is not used
-		next(reader)
+		header_row = next(reader)
+		length = len(header_row)
+		for header in FILE_HEADERS['sourcing_file']:
+			for idx, col in enumerate(header_row):
+				if col.lower() == header:
+					indexes[header] = idx
+			if header not in indexes:
+				flash('Sourcing rule file: missing %s column' % header)
+				return None
+		line_num = 1 
 		for row in reader:
-			sourcing_key = tuple(row[1:]) # customer,product
-			sourcing_map.setdefault(sourcing_key, [])
-			sourcing_map[sourcing_key].append(row[0]) # site
+			line_num += 1
+			if len(row) != length:
+				flash('Sourcing rule file, line %d: too many or too few columns' % line_num)
+				has_error = True
+				continue
+			customer = row[indexes['customer']]
+			product = row[indexes['product']]
+			sites = sourcing_map.setdefault((customer,product), [])
+			sites.append(row[indexes['site']])
+	if has_error:
+		return None
 	return sourcing_map
 
 def readSupplyFile():
 	# site,product->{date->quantity}
-	supply_map = dict()
+	supply_map = {}
+	indexes = {}
+	has_error = False
 	with open('uploads/supply_file.csv', newline='') as f:
 		reader = csv.reader(f)
-		# header row is not used
-		next(reader)
+		header_row = next(reader)
+		length = len(header_row)
+		for header in FILE_HEADERS['supply_file']:
+			for idx, col in enumerate(header_row):
+				if col.lower() == header:
+					indexes[header] = idx
+			if header not in indexes:
+				flash('Supply file: missing %s column' % header)
+				return None
+		line_num = 1 
 		for row in reader:
-			quantity = int(row[3])
+			line_num += 1
+			if len(row) != length:
+				flash('Supply  file, line %d: too many or too few columns' % line_num)
+				has_error = True
+				continue
+			quantity = parseQuantity(row[indexes['quantity']])
+			if quantity is None:
+				flash('Supply  file, line %d: cannot parse quantity' % line_num)
+				has_error = True
+				quantity = 0
+			supply_date = convertDate(row[indexes['date']])
+			if supply_date is None:
+				flash('Supply  file, line %d: cannot parse date' %line_num)
+				has_error = True
+				supply_date = ''
 			if quantity <= 0:
 				continue
-			supply_key = tuple(row[0:2]) # site,product
-			supply_map.setdefault(supply_key, {})
-			supply_date = convertDate(row[2], '%d/%m/%y')
-			supply_map[supply_key].setdefault(supply_date, 0)
-			supply_map[supply_key][supply_date] += quantity
+			site = row[indexes['site']]
+			product = row[indexes['product']]
+			supply_dict = supply_map.setdefault((site, product), {})
+			supply_dict.setdefault(supply_date, 0)
+			supply_dict[supply_date] += quantity
+	if has_error:
+		return None
 	return supply_map
 
-def convertDate(date_str, pattern):
-	dt = datetime.strptime(date_str, pattern)
+def parseQuantity(quantity_str):
+	try:
+		quantity = int(quantity_str)
+	except ValueError:
+		return None
+	return quantity
+
+def convertDate(date_str):
+	try:
+		dt = datetime.strptime(date_str, '%d-%b-%y')
+	except ValueError:
+		try:
+			dt = datetime.strptime(date_str, '%d/%m/%y')
+		except ValueError:
+			try:
+				dt = datetime.strptime(date_str, '%Y-%m-%d')
+			except ValueError:
+				return None
 	return dt.strftime('%Y-%m-%d')
-
-
-
-
-
-
-
-
-
+	
+	
