@@ -12,6 +12,7 @@ FILE_HEADERS = {
 	'supply_file':['site', 'product', 'date', 'quantity'],
 	'sourcing_file':['site', 'customer', 'product'],
 }
+FILE_PATH = 'uploads/'
 
 app = Flask(__name__)
 app.config['SECRET_KEY'] = '123456'
@@ -20,9 +21,11 @@ app.config['SECRET_KEY'] = '123456'
 def index():
 	has_file = {}
 	for file_name in FILE_HEADERS.keys():
-		has_file[file_name] = os.path.isfile('uploads/' + file_name + '.csv')
+		has_file[file_name] = os.path.isfile(FILE_PATH + file_name + '.csv')
 
 	if request.method == 'POST':
+		if not os.path.exists(FILE_PATH):
+			os.mkdir(FILE_PATH)
 		# check if the post request has the file part
 		has_error = False
 		for file_name in FILE_HEADERS.keys():
@@ -35,8 +38,6 @@ def index():
 	return render_template('index.html', has_file = has_file)
 
 def check_file(file_name, files, has_file):
-	print(file_name)
-	print(has_file[file_name])
 	if file_name not in request.files or files[file_name].filename == '' or files[file_name] is None:
 		if not has_file[file_name]:
 			flash(file_name + ' is not uploaded')
@@ -47,7 +48,7 @@ def check_file(file_name, files, has_file):
 	if not allowed_file(file.filename):
 		flash('The format for file ' + file.filename + ' is not supported')
 		return True
-	file.save('uploads/' + file_name + '.csv')
+	file.save(FILE_PATH + file_name + '.csv')
 	return False
 
 def allowed_file(filename):
@@ -67,7 +68,7 @@ def plan():
 
 @app.route('/download/<path:filename>', methods=['GET'])
 def download(filename):
-	return send_from_directory('uploads/', filename + '.csv', as_attachment=True)
+	return send_from_directory(FILE_PATH, filename + '.csv', as_attachment=True)
 
 def allocate(orders, sourcing_map, supply_map):
 	results = {}
@@ -113,7 +114,6 @@ def allocate(orders, sourcing_map, supply_map):
 					results.setdefault((batch, idx, site, customer, product), [])
 					results[(batch, idx, site, customer, product)].append((date, fullfilment))
 					supply_map[(site, product)][date] -= fullfilment
-					#print((batch, idx, customer, product, orders_on_same_day[idx][2], demands[(site, product)][idx], supply, supply_map[(site, product)][date], total_demand, cap, ))
 					if supply_map[(site, product)][date] == 0:
 						del supply_map[(site, product)][date]
 						if len(supply_map[(site, product)]) == 0:
@@ -133,12 +133,12 @@ def allocate(orders, sourcing_map, supply_map):
 		row.extend(['' for _i in range(len(sorted_dates))])
 		for (date, fullfilment) in fullfilments:
 			idx = header.index(date)
-			row[idx] = fullfilment
+			row[idx] = str(fullfilment)
 		plan.append(row)
 	return plan
 
 def writePlanFile(plan):
-	with open('uploads/order_execution_plan.csv', 'w', newline='') as csvfile:
+	with open(FILE_PATH + 'order_execution_plan.csv', 'w', newline='') as csvfile:
 		writer = csv.writer(csvfile)
 		for row in plan:
 			writer.writerow(row)
@@ -147,9 +147,13 @@ def readOrderFile():
 	orders = {}
 	indexes = {}
 	has_error = False
-	with open('uploads/order_file.csv', newline='') as f:
+	with open(FILE_PATH + 'order_file.csv', newline='') as f:
 		reader = csv.reader(f)
-		header_row = next(reader)
+		try:
+			header_row = next(reader)
+		except StopIteration:
+			flash('Demand order file is empty')
+			return None
 		length = len(header_row)
 		for header in FILE_HEADERS['order_file']:
 			for idx, col in enumerate(header_row):
@@ -181,19 +185,23 @@ def readOrderFile():
 			order_list.append((row[indexes['customer']], row[indexes['product']], demand))
 	if has_error:
 		return None
-	# sort order by date, then by customer and product alphabetically	
+	# sort order by date, then by product and customer alphabetically	
 	keys = list(orders.keys())
 	keys.sort()
-	return [sorted(orders[key], key=lambda row: '-'.join([row[0], row[1]])) for key in keys]
+	return [sorted(orders[key], key=lambda row: '-'.join([row[1], row[0]])) for key in keys]
 
 def readSourcingFile():
 	# customer,product->[sites]
 	sourcing_map = {}
 	indexes = {}
 	has_error = False
-	with open('uploads/sourcing_file.csv', newline='') as f:
+	with open(FILE_PATH + 'sourcing_file.csv', newline='') as f:
 		reader = csv.reader(f)
-		header_row = next(reader)
+		try:
+			header_row = next(reader)
+		except StopIteration:
+			flash('Sourcing rule file is empty')
+			return None
 		length = len(header_row)
 		for header in FILE_HEADERS['sourcing_file']:
 			for idx, col in enumerate(header_row):
@@ -222,9 +230,13 @@ def readSupplyFile():
 	supply_map = {}
 	indexes = {}
 	has_error = False
-	with open('uploads/supply_file.csv', newline='') as f:
+	with open(FILE_PATH + 'supply_file.csv', newline='') as f:
 		reader = csv.reader(f)
-		header_row = next(reader)
+		try:
+			header_row = next(reader)
+		except StopIteration:
+			flash('Supply file is empty')
+			return None		
 		length = len(header_row)
 		for header in FILE_HEADERS['supply_file']:
 			for idx, col in enumerate(header_row):
@@ -237,17 +249,17 @@ def readSupplyFile():
 		for row in reader:
 			line_num += 1
 			if len(row) != length:
-				flash('Supply  file, line %d: too many or too few columns' % line_num)
+				flash('Supply file, line %d: too many or too few columns' % line_num)
 				has_error = True
 				continue
 			quantity = parseQuantity(row[indexes['quantity']])
 			if quantity is None:
-				flash('Supply  file, line %d: cannot parse quantity' % line_num)
+				flash('Supply file, line %d: cannot parse quantity' % line_num)
 				has_error = True
 				quantity = 0
 			supply_date = convertDate(row[indexes['date']])
 			if supply_date is None:
-				flash('Supply  file, line %d: cannot parse date' %line_num)
+				flash('Supply file, line %d: cannot parse date' %line_num)
 				has_error = True
 				supply_date = ''
 			if quantity <= 0:
