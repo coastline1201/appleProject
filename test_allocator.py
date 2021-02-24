@@ -1,9 +1,9 @@
 import csv
-import index
+import allocator
 import os
 import pytest
 
-index.FILE_PATH = 'testdata/'
+allocator.FILE_PATH = 'testdata/'
 
 SOURCING_FILE = [
     ['site','customer','product'],
@@ -185,20 +185,20 @@ def test_empty_sourcing():
 
 def allocate(order_file, supply_file = SUPPLY_FILE, sourcing_file = SOURCING_FILE):
     # write to test directory
-    with open(index.FILE_PATH + 'order_file.csv', 'w', newline='') as csvfile:
+    with open(allocator.FILE_PATH + 'order_file.csv', 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
         for row in order_file:
             writer.writerow(row)
-    with open(index.FILE_PATH + 'sourcing_file.csv', 'w', newline='') as csvfile:
+    with open(allocator.FILE_PATH + 'sourcing_file.csv', 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
         for row in sourcing_file:
             writer.writerow(row)
-    with open(index.FILE_PATH + 'supply_file.csv', 'w', newline='') as csvfile:
+    with open(allocator.FILE_PATH + 'supply_file.csv', 'w', newline='') as csvfile:
         writer = csv.writer(csvfile)
         for row in supply_file:
             writer.writerow(row)
     # perform allocation
-    orders = index.readOrderFile()
-    sourcing_map = index.readSourcingFile()
-    supply_map = index.readSupplyFile()
-    return index.allocate(orders, sourcing_map, supply_map)
+    orders = allocator.readOrderFile()
+    sourcing_map = allocator.readSourcingFile()
+    supply_map = allocator.readSupplyFile()
+    return allocator.allocate(orders, sourcing_map, supply_map)

@@ -70,6 +70,16 @@ def plan():
 def download(filename):
 	return send_from_directory(FILE_PATH, filename + '.csv', as_attachment=True)
 
+@app.route('/clear/', methods=['GET'])
+def clear():
+	for file_name in FILE_HEADERS.keys():
+		full_path = FILE_PATH + file_name + '.csv'
+		if os.path.isfile(full_path):
+			os.remove(full_path)
+	if os.path.isfile(FILE_PATH + 'order_execution_plan.csv'):
+			os.remove(FILE_PATH + 'order_execution_plan.csv')
+	return redirect(url_for('index'))
+
 def allocate(orders, sourcing_map, supply_map):
 	results = {}
 	unique_dates = set()

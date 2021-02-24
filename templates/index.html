@@ -30,6 +30,13 @@
 
 {% block header %}
   <h2>Upload Files</h2>
+  <a href="{{ url_for('clear')}} ">
+    {% if not (has_file.order_file or has_file.supply_file or has_file.sourcing_file) %}
+      <button disabled="diabled" type="button">clear all files</button>
+    {% else %}
+      <button type="button">clear all files</button>
+    {% endif %}    
+  </a>
 {% endblock %}
 
 {% block content %}
