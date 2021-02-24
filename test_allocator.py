@@ -12,6 +12,7 @@ SOURCING_FILE = [
     ['1206','C002','P001'],
     ['1203','C002','P001'],
     ['1206','C003','P001'],
+    ['1203','C004','P001'],
     ['1206','C001','P002'],
     ['1206','C002','P002'],
 ]
@@ -119,7 +120,8 @@ def test_order_on_dame_day():
     ]
     assert allocate(order_file) == expected
 
-# customer order with fewer sourcing sites has less demand
+# customer order with fewer sourcing sites has less demand,
+# site providing for more customers are sorted after the other site
 def test_order_on_dame_day_w_unbalanced_sourcing_site_1():
     order_file = [
         ['customer','product','date','quantity'],
@@ -138,6 +140,7 @@ def test_order_on_dame_day_w_unbalanced_sourcing_site_1():
     assert allocate(order_file) == expected
 
 # customer order with fewer sourcing sites has more demand
+# site providing for more customers are sorted after the other site
 def test_order_on_dame_day_w_unbalanced_sourcing_site_2():
     order_file = [
         ['customer','product','date','quantity'],
@@ -150,6 +153,44 @@ def test_order_on_dame_day_w_unbalanced_sourcing_site_2():
         ['1203', 'C001', 'P001', '500', ''],
         ['1203', 'C002', 'P001', '600', ''],
         ['1206', 'C003', 'P001', '2000', '1000'],
+    ]
+    assert allocate(order_file) == expected
+
+# customer order with fewer sourcing sites has less demand
+# site providing for more customers are sorted before the other site
+def test_order_on_dame_day_w_unbalanced_sourcing_site_3():
+    order_file = [
+        ['customer','product','date','quantity'],
+        ['C001','P001','1-Jul-19','3000'],
+        ['C002','P001','1-Jul-19','2000'],
+        ['C004','P001','1-Jul-19','500'],
+    ]
+    expected = [
+        ['site', 'customer', 'product', '2019-07-01', '2019-07-02', '2019-07-04'],
+        ['1203', 'C001', 'P001', '1090', '545', ''],
+        ['1206', 'C001', 'P001', '1200', '165', ''],
+        ['1203', 'C002', 'P001', '727', '363', ''],
+        ['1206', 'C002', 'P001', '800', '110', ''],
+        ['1203', 'C004', 'P001', '183', '92', '225']
+    ]
+    assert allocate(order_file) == expected
+
+# customer order with fewer sourcing sites has more demand
+# site providing for more customers are sorted before the other site
+def test_order_on_dame_day_w_unbalanced_sourcing_site_4():
+    order_file = [
+        ['customer','product','date','quantity'],
+        ['C001','P001','1-Jul-19','500'],
+        ['C002','P001','1-Jul-19','600'],
+        ['C004','P001','1-Jul-19','3000'],
+    ]
+    expected = [
+        ['site', 'customer', 'product', '2019-07-01', '2019-07-02', '2019-07-04'],
+        ['1203', 'C001', 'P001', '243', '', ''],
+        ['1206', 'C001', 'P001', '257', '', ''],
+        ['1203', 'C002', 'P001', '292', '', ''],
+        ['1206', 'C002', 'P001', '308', '', ''],
+        ['1203', 'C004', 'P001', '1465', '1000', '535']
     ]
     assert allocate(order_file) == expected
 
