@@ -18,6 +18,17 @@ An interactive UI provides the following functionalities:
 4. clear all input files and allocation result
 
 ### Allocation logic
+Rules:
+1. The basic allocation logic: Sort all the orders table by date in ascending order. For each one of them, check sourcing rule table to find the site this customer-product combination can source from. And then check the supply table for that site-product combination and exhaust all the available supply. Since orders should be processed in a first-come-first-serve manner, it’s ok that an earlier order greedily takes all it needs and leaves none for orders that comes in later. In the result table, each row is a unique site-customer-product combination, if there is fulfillment yield from the above look up procedure on a day, mark the fulfilled quantity in that date’s column, otherwise leave the date’s column empty. 
+2. The final allocation result does not necessarily fulfill all the orders completely,  because of lack of supply, some orders are fully fulfilled, some are partially fulfilled, and some are not fulfilled at all (which will be omitted from the result table). The result does not need to use up all the supply either, because of not enough demands.
+3. Allocation rule for orders that come on the same day: if the orders do not result in a supply competition, e.g. different product or different sourcing site, then it should not matter which order is executed first, should be executed in a way as if they were executed sequentially; If the order do require the same product from the same set of sites, and if there are enough quantity for all the orders, fulfill them all, leave the left over supply for future use; if the supply quantity is less than all the demands combined, then orders will be fulfilled proportionally based on each customer's original demand, e.g. C001 demands 5000 and C002 demands 1000 for the same product from the same site on the same day, and there are only 600 supply quantity available, then C001 should get 500 and C002 should get 100 on that day; for later fullfilments, even though the actually demand for C001 becomes 4500, and actual demand for C002 becomes 900, the portion of one customer can get from supplies should still be calculated based on their original demands, which is 5000:1000. 
+4. In order to completely split the supply between same day orders and avoid supply undivisible problem, the last order on that day may get a few more supplies than what is calculted proportionally.
+
+Assumptions:
+1. It is possible that customers source same product from different site? Like for P002, C001 sources from 1206 but C002 sources from 1207.
+2. There’s no up limit on how many quantity of different products can be fulfilled on one day. That means if there are enough supply, all the orders can be filled in one day.
+3. There is unlimited storage space for supplies. Supplies that are not used up on previous days can be used on later days.
+4. The current date should not matter in the calculation. The order date can be earlier or later than current date, so as the projected supply date. Though I suppose the most common case is order date is earlier than current date and projected supply date is later than current date, other cases can also be valid.
 ### Input validation
 The following validation for uploaded csv files are done before proceed to allocation. All the catched errors will be shown on the UI after upload.
 1. check file is not empty
